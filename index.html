@@ -207,23 +207,46 @@
   }
   .grid{
     display:grid;
-    grid-template-columns:repeat(3,1fr);
-    gap:10px;
+    grid-template-columns:repeat(2,1fr);
+    gap:22px 14px;
+    background:
+      repeating-linear-gradient(0deg, rgba(184,147,95,0.05) 0px, rgba(184,147,95,0.05) 1px, transparent 1px, transparent 40px),
+      repeating-linear-gradient(90deg, rgba(184,147,95,0.05) 0px, rgba(184,147,95,0.05) 1px, transparent 1px, transparent 40px),
+      #efe6d8;
+    border-radius:14px;
+    padding:20px 14px;
   }
   .grid .cell{
-    background:#fff;
-    border:1px solid var(--line);
-    border-radius:10px;
-    padding:6px 6px 8px;
-    box-shadow:0 3px 8px rgba(60,45,25,0.08);
+    background:#fffefb;
+    border:1px solid #eee2cf;
+    border-radius:4px;
+    padding:8px 8px 10px;
+    box-shadow:0 6px 14px rgba(60,45,25,0.18);
     display:flex;
     flex-direction:column;
-    transition:transform .15s;
+    transition:transform .2s;
+    position:relative;
   }
-  .grid .cell:active{ transform:scale(0.96); }
+  .grid .cell:nth-child(6n+1){ transform:rotate(-4deg); }
+  .grid .cell:nth-child(6n+2){ transform:rotate(3deg); }
+  .grid .cell:nth-child(6n+3){ transform:rotate(-2deg); }
+  .grid .cell:nth-child(6n+4){ transform:rotate(4deg); }
+  .grid .cell:nth-child(6n+5){ transform:rotate(-3deg); }
+  .grid .cell:nth-child(6n+6){ transform:rotate(2deg); }
+  .grid .cell:active{ transform:rotate(0deg) scale(1.04); z-index:5; }
+  .grid .cell::before{
+    content:'';
+    position:absolute;
+    top:-10px;
+    left:50%;
+    transform:translateX(-50%) rotate(-3deg);
+    width:46px;
+    height:18px;
+    background:rgba(232,201,195,0.75);
+    box-shadow:0 1px 3px rgba(0,0,0,0.15);
+  }
   .grid .cell .photoBox{
     aspect-ratio:1/1;
-    border-radius:6px;
     overflow:hidden;
     background:var(--cream);
   }
@@ -236,11 +259,11 @@
   .grid .cell .caption{
     text-align:center;
     font-family:'Brush Script MT', cursive;
-    font-size:1em;
+    font-size:1.15em;
     color:var(--gold-dark);
-    margin-top:5px;
-    min-height:1.1em;
-    line-height:1.1;
+    margin-top:6px;
+    min-height:1.2em;
+    line-height:1.2;
     overflow:hidden;
     text-overflow:ellipsis;
     white-space:nowrap;
@@ -1067,7 +1090,7 @@
       const caption = document.createElement('div');
       caption.className = 'caption';
       const hasName = p.name && p.name !== 'Anonymous guest';
-      caption.textContent = hasName ? p.name : '';
+      caption.textContent = hasName ? p.name : 'A wedding guest';
       cell.appendChild(photoBox);
       cell.appendChild(caption);
       cell.addEventListener('click', ()=> openLightbox(p));
@@ -1130,12 +1153,21 @@
   }
 
   // Draws one polaroid card (photo + frame + name caption) at a given horizontal
-  // offset (px) and opacity (0-1), centered on the canvas.
-  function drawCard(entry, xOffset, alpha){
+  // offset (px), opacity (0-1), and photo zoom scale (1 = normal).
+  function drawCard(entry, xOffset, alpha, zoom){
     if(!entry || !entry.img) return;
+    zoom = zoom || 1;
     sctx.save();
     sctx.globalAlpha = alpha;
     sctx.translate(xOffset, 0);
+
+    // washi tape accent
+    sctx.save();
+    sctx.translate(CANVAS_W/2, CARD_MARGIN - 4);
+    sctx.rotate(-4 * Math.PI/180);
+    sctx.fillStyle = 'rgba(232,201,195,0.85)';
+    sctx.fillRect(-42, -12, 84, 26);
+    sctx.restore();
 
     // card background
     sctx.fillStyle = '#fffaf5';
@@ -1146,7 +1178,7 @@
     sctx.fill();
     sctx.shadowColor = 'transparent';
 
-    // photo (cover-fit inside the card's photo area)
+    // photo (cover-fit inside the card's photo area, with a slow zoom for life)
     const photoX = CARD_MARGIN + 14;
     const photoY = CARD_MARGIN + 14;
     const photoW = CARD_W - 28;
@@ -1157,9 +1189,9 @@
     const imgRatio = img.width / img.height;
     let sw, sh, sx, sy;
     if(imgRatio > targetRatio){
-      sh = img.height; sw = sh * targetRatio; sx = (img.width - sw)/2; sy = 0;
+      sh = img.height / zoom; sw = sh * targetRatio; sx = (img.width - sw)/2; sy = (img.height - sh)/2;
     } else {
-      sw = img.width; sh = sw / targetRatio; sx = 0; sy = (img.height - sh)/2;
+      sw = img.width / zoom; sh = sw / targetRatio; sx = (img.width - sw)/2; sy = (img.height - sh)/2;
     }
     sctx.save();
     roundRectPath(sctx, photoX, photoY, photoW, photoH, 10);
@@ -1173,23 +1205,19 @@
     roundRectPath(sctx, photoX, photoY, photoW, photoH, 10);
     sctx.stroke();
 
-    // caption
-    if(entry.name){
-      sctx.fillStyle = '#8f7148';
-      sctx.font = '46px "Brush Script MT", cursive';
-      sctx.textAlign = 'center';
-      sctx.textBaseline = 'middle';
-      const capY = CARD_MARGIN + PHOTO_H + (CAPTION_H/2) - 6;
-      let name = entry.name;
-      // shrink font if the name is too wide for the card
-      let fontSize = 46;
+    // caption — always shows something, defaulting when no name was given
+    sctx.fillStyle = '#8f7148';
+    sctx.textAlign = 'center';
+    sctx.textBaseline = 'middle';
+    const capY = CARD_MARGIN + PHOTO_H + (CAPTION_H/2) - 6;
+    const name = entry.name || 'A wedding guest';
+    let fontSize = 46;
+    sctx.font = fontSize + 'px "Brush Script MT", cursive';
+    while(sctx.measureText(name).width > CARD_W - 60 && fontSize > 22){
+      fontSize -= 2;
       sctx.font = fontSize + 'px "Brush Script MT", cursive';
-      while(sctx.measureText(name).width > CARD_W - 60 && fontSize > 22){
-        fontSize -= 2;
-        sctx.font = fontSize + 'px "Brush Script MT", cursive';
-      }
-      sctx.fillText(name, CANVAS_W/2, capY);
     }
+    sctx.fillText(name, CANVAS_W/2, capY);
 
     sctx.restore();
   }
@@ -1210,13 +1238,15 @@
     sctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
     if(posInCycle < HOLD_MS){
-      // holding still on the current photo
-      drawCard(slideImages[idx], 0, 1);
+      // holding still on the current photo, with a slow gentle zoom-in
+      const holdT = posInCycle / HOLD_MS;
+      const zoom = 1 + holdT * 0.08;
+      drawCard(slideImages[idx], 0, 1, zoom);
     } else {
       // transitioning to the next photo: current fades out while next slides in from the right
       const t = easeInOut((posInCycle - HOLD_MS) / TRANSITION_MS);
-      drawCard(slideImages[idx], -t * 60, 1 - t);
-      drawCard(slideImages[nextIdx], (1 - t) * CANVAS_W, t);
+      drawCard(slideImages[idx], -t * 60, 1 - t, 1.08);
+      drawCard(slideImages[nextIdx], (1 - t) * CANVAS_W, t, 1);
     }
   }
 
