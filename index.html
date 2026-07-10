@@ -536,7 +536,7 @@
 <body>
 <div class="app">
   <header>
-    <p class="names">Jenny &amp; Tony</p>
+    <p class="names">Sarah &amp; James</p>
     <p class="sub">Share a moment from our day</p>
     <div style="display:flex; gap:8px; justify-content:center; margin-top:14px;">
       <button id="qrBtn" class="qrLink" style="margin-top:0;">📱 Show QR Code</button>
@@ -1255,14 +1255,22 @@
     rafId = requestAnimationFrame(loopTick);
   }
 
+  let preloadFailCount = 0;
+
   function preloadImages(photos){
+    preloadFailCount = 0;
     return Promise.all(photos.map(p => new Promise((resolve)=>{
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
       const hasName = p.name && p.name !== 'Anonymous guest';
-      img.onload = ()=> resolve({ img, name: hasName ? p.name : '' });
-      img.onerror = ()=> resolve(null);
-      img.src = p.data;
+      fetch(p.data)
+        .then(res => { if(!res.ok) throw new Error('fetch failed'); return res.blob(); })
+        .then(blob => {
+          const objectUrl = URL.createObjectURL(blob);
+          const img = new Image();
+          img.onload = ()=> resolve({ img, name: hasName ? p.name : '' });
+          img.onerror = ()=> { preloadFailCount++; resolve(null); };
+          img.src = objectUrl;
+        })
+        .catch(()=> { preloadFailCount++; resolve(null); });
     }))).then(entries => entries.filter(Boolean));
   }
 
@@ -1278,7 +1286,8 @@
       slideStatus.textContent = 'Could not load photos.';
       return;
     }
-    slideStatus.textContent = slideImages.length + (slideImages.length===1 ? ' photo' : ' photos');
+    slideStatus.textContent = slideImages.length + (slideImages.length===1 ? ' photo' : ' photos')
+      + (preloadFailCount > 0 ? ' (' + preloadFailCount + ' failed to load)' : '');
     pausedElapsed = 0;
     playStartTime = performance.now();
     slidePlaying = true;
@@ -1350,7 +1359,16 @@
     recordedChunks = [];
 
     const fps = 30;
-    const canvasStream = slideCanvas.captureStream(fps);
+    let canvasStream;
+    try{
+      canvasStream = slideCanvas.captureStream(fps);
+    }catch(err){
+      slideExportStatus.textContent = 'Could not capture the slideshow (' + err.message + '). Try Chrome on Android or desktop.';
+      isRecording = false;
+      slideExportBtn.disabled = false;
+      slidePlayPauseBtn.disabled = false;
+      return;
+    }
     let combinedStream = canvasStream;
 
     let audioStream = null;
