@@ -173,6 +173,17 @@
     margin-top:6px;
   }
   #fileFallback{display:none;}
+  .flipBtn{
+    display:block;
+    margin:10px auto 0;
+    background:none;
+    border:1px solid var(--line);
+    color:var(--ink);
+    padding:8px 16px;
+    border-radius:20px;
+    font-size:0.85em;
+  }
+  .flipBtn:active{background:var(--cream);}
 
   /* Gallery view */
   .galleryHead{
@@ -346,6 +357,79 @@
     color:#c9beb2;
     line-height:1;
   }
+
+  #adminLoginModal{
+    position:fixed;
+    inset:0;
+    background:rgba(20,16,12,0.92);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:80;
+    padding:20px;
+  }
+  #adminLoginModal.open{display:flex;}
+
+  #adminPanel{
+    position:fixed;
+    inset:0;
+    background:var(--white);
+    z-index:65;
+    display:none;
+    flex-direction:column;
+  }
+  #adminPanel.open{display:flex;}
+  .adminBar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:18px 20px;
+    border-bottom:1px solid var(--line);
+    font-weight:600;
+    color:var(--gold-dark);
+  }
+  #adminBody{
+    flex:1;
+    overflow-y:auto;
+    padding:16px 20px;
+    max-width:520px;
+    margin:0 auto;
+    width:100%;
+  }
+  .adminGrid{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:6px;
+  }
+  .adminCell{
+    position:relative;
+    aspect-ratio:1/1;
+    border-radius:8px;
+    overflow:hidden;
+    background:var(--cream);
+  }
+  .adminCell img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+  }
+  .adminCell .delBtn{
+    position:absolute;
+    top:4px;
+    right:4px;
+    width:26px;
+    height:26px;
+    border-radius:50%;
+    background:rgba(20,16,12,0.75);
+    color:#fff;
+    border:none;
+    font-size:1em;
+    line-height:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -355,7 +439,10 @@
   <header>
     <p class="names">Sarah &amp; James</p>
     <p class="sub">Share a moment from our day</p>
-    <button id="qrBtn" class="qrLink">📱 Show QR Code</button>
+    <div style="display:flex; gap:8px; justify-content:center; margin-top:14px;">
+      <button id="qrBtn" class="qrLink" style="margin-top:0;">📱 Show QR Code</button>
+      <button id="adminBtn" class="qrLink" style="margin-top:0;">🔒 Admin</button>
+    </div>
   </header>
 
   <nav>
@@ -377,6 +464,7 @@
       </div>
 
       <button class="shutter" id="shutterBtn" style="display:none;"></button>
+      <button class="flipBtn" id="flipBtn" style="display:none;">🔄 Flip Camera</button>
       <p class="hint" id="camHint" style="display:none;">Tap the circle to capture</p>
 
       <div id="fileFallback">
@@ -428,6 +516,29 @@
   </div>
 </div>
 
+<div id="adminLoginModal">
+  <div class="qrCard">
+    <button class="qrClose" id="adminLoginClose">×</button>
+    <h3 style="font-family:'Helvetica Neue',Arial,sans-serif; font-size:1.1em; letter-spacing:0.5px;">Admin Login</h3>
+    <input type="text" id="adminUser" placeholder="Username" style="margin-top:16px;">
+    <input type="password" id="adminPass" placeholder="Password">
+    <p id="adminLoginError" style="color:#c0524a; font-size:0.8em; display:none; margin:8px 0 0;">Incorrect username or password.</p>
+    <div class="qrActions">
+      <button class="btn btn-primary btn-full" id="adminLoginSubmit">Log In</button>
+    </div>
+  </div>
+</div>
+
+<div id="adminPanel">
+  <div class="adminBar">
+    <span>Manage Photos</span>
+    <button id="adminExitBtn" class="btn btn-secondary" style="flex:none; padding:8px 14px;">Exit Admin</button>
+  </div>
+  <div id="adminBody">
+    <div class="loading">Loading photos…</div>
+  </div>
+</div>
+
 <script>
 (function(){
   // ---------- SUPABASE SETUP ----------
@@ -446,6 +557,7 @@
   const camPlaceholder = document.getElementById('camPlaceholder');
   const startCamBtn = document.getElementById('startCamBtn');
   const shutterBtn = document.getElementById('shutterBtn');
+  const flipBtn = document.getElementById('flipBtn');
   const camHint = document.getElementById('camHint');
   const flash = document.getElementById('flash');
   const fileFallback = document.getElementById('fileFallback');
@@ -473,6 +585,21 @@
   const qrUrl = document.getElementById('qrUrl');
   const copyLinkBtn = document.getElementById('copyLinkBtn');
   const printQrBtn = document.getElementById('printQrBtn');
+
+  const adminBtn = document.getElementById('adminBtn');
+  const adminLoginModal = document.getElementById('adminLoginModal');
+  const adminLoginClose = document.getElementById('adminLoginClose');
+  const adminUser = document.getElementById('adminUser');
+  const adminPass = document.getElementById('adminPass');
+  const adminLoginError = document.getElementById('adminLoginError');
+  const adminLoginSubmit = document.getElementById('adminLoginSubmit');
+  const adminPanel = document.getElementById('adminPanel');
+  const adminExitBtn = document.getElementById('adminExitBtn');
+  const adminBody = document.getElementById('adminBody');
+
+  const ADMIN_USER = 'josh';
+  const ADMIN_PASS = 'joshiscool';
+  let isAdmin = false;
 
   function currentPageUrl(){
     // Strip any hash/query so the QR always points to the clean app URL
@@ -517,6 +644,88 @@
   let capturedDataUrl = null;
   let galleryLoaded = false;
 
+  // ---------- ADMIN ----------
+  adminBtn.addEventListener('click', ()=>{
+    if(isAdmin){
+      openAdminPanel();
+    } else {
+      adminUser.value = '';
+      adminPass.value = '';
+      adminLoginError.style.display = 'none';
+      adminLoginModal.classList.add('open');
+    }
+  });
+  adminLoginClose.addEventListener('click', ()=> adminLoginModal.classList.remove('open'));
+
+  adminLoginSubmit.addEventListener('click', ()=>{
+    if(adminUser.value === ADMIN_USER && adminPass.value === ADMIN_PASS){
+      isAdmin = true;
+      adminLoginModal.classList.remove('open');
+      openAdminPanel();
+    } else {
+      adminLoginError.style.display = 'block';
+    }
+  });
+
+  adminExitBtn.addEventListener('click', ()=>{
+    adminPanel.classList.remove('open');
+  });
+
+  async function openAdminPanel(){
+    adminPanel.classList.add('open');
+    adminBody.innerHTML = '<div class="loading">Loading photos…</div>';
+    try{
+      const { data: files, error } = await sb.storage.from(BUCKET).list('', {
+        limit: 1000,
+        sortBy: { column: 'created_at', order: 'desc' }
+      });
+      if(error) throw error;
+      const validFiles = (files || []).filter(f => f.name && f.name.endsWith('.jpg'));
+
+      if(validFiles.length === 0){
+        adminBody.innerHTML = '<div class="empty">No photos to manage yet.</div>';
+        return;
+      }
+
+      const grid = document.createElement('div');
+      grid.className = 'adminGrid';
+      validFiles.forEach(f=>{
+        const { data: pub } = sb.storage.from(BUCKET).getPublicUrl(f.name);
+        const cell = document.createElement('div');
+        cell.className = 'adminCell';
+        const img = document.createElement('img');
+        img.src = pub.publicUrl;
+        img.loading = 'lazy';
+        const delBtn = document.createElement('button');
+        delBtn.className = 'delBtn';
+        delBtn.textContent = '×';
+        delBtn.addEventListener('click', ()=> deletePhoto(f.name, cell));
+        cell.appendChild(img);
+        cell.appendChild(delBtn);
+        grid.appendChild(cell);
+      });
+      adminBody.innerHTML = '';
+      adminBody.appendChild(grid);
+    }catch(err){
+      adminBody.innerHTML = '<div class="empty">Couldn\'t load photos.</div>';
+    }
+  }
+
+  async function deletePhoto(fileName, cellEl){
+    if(!confirm('Delete this photo? This cannot be undone.')) return;
+    cellEl.style.opacity = '0.4';
+    try{
+      const { error } = await sb.storage.from(BUCKET).remove([fileName]);
+      if(error) throw error;
+      cellEl.remove();
+      galleryLoaded = false; // force guest gallery to refresh next time it's opened
+      showToast('Photo deleted');
+    }catch(err){
+      cellEl.style.opacity = '1';
+      showToast('Could not delete — try again');
+    }
+  }
+
   function showToast(msg){
     toastEl.textContent = msg;
     toastEl.classList.add('show');
@@ -542,26 +751,39 @@
   tabGal.addEventListener('click', ()=> switchTab('gal'));
 
   // ---------- CAMERA ----------
+  let currentFacingMode = 'user';
+
   async function startCamera(){
     try{
+      if(stream){
+        stream.getTracks().forEach(t=>t.stop());
+        stream = null;
+      }
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
+        video: { facingMode: currentFacingMode },
         audio: false
       });
       video.srcObject = stream;
       video.style.display = 'block';
       camPlaceholder.style.display = 'none';
       shutterBtn.style.display = 'block';
+      flipBtn.style.display = 'block';
       camHint.style.display = 'block';
       fileFallback.style.display = 'none';
     }catch(err){
       // Camera unavailable or denied — fall back to native file capture
       camPlaceholder.innerHTML = 'Camera access unavailable.<br>Use your device camera below instead.';
       fileFallback.style.display = 'block';
+      flipBtn.style.display = 'none';
     }
   }
 
   startCamBtn.addEventListener('click', startCamera);
+
+  flipBtn.addEventListener('click', ()=>{
+    currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
+    startCamera();
+  });
 
   fileFallbackBtn.addEventListener('click', ()=> fileInput.click());
   fileInput.addEventListener('change', (e)=>{
@@ -628,6 +850,7 @@
     img.src = dataUrl;
 
     shutterBtn.style.display = 'none';
+    flipBtn.style.display = 'none';
     camHint.style.display = 'none';
     fileFallback.style.display = 'none';
     camPlaceholder.style.display = 'none';
