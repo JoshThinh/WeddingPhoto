@@ -430,6 +430,55 @@
     align-items:center;
     justify-content:center;
   }
+
+  #slideshowModal{
+    position:fixed;
+    inset:0;
+    background:#0e0c0a;
+    z-index:90;
+    display:none;
+    flex-direction:column;
+    padding:16px;
+  }
+  #slideshowModal.open{display:flex;}
+  .slideTop{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    color:#e8ddd0;
+    font-size:0.85em;
+    margin-bottom:10px;
+  }
+  .slideTop .qrClose{
+    position:static;
+    color:#e8ddd0;
+  }
+  #slideCanvas{
+    width:100%;
+    max-width:420px;
+    margin:0 auto;
+    flex:1;
+    min-height:0;
+    object-fit:contain;
+    border-radius:12px;
+    background:#000;
+  }
+  .slideControls{
+    display:flex;
+    gap:8px;
+    margin-top:14px;
+    max-width:420px;
+    width:100%;
+    margin-left:auto;
+    margin-right:auto;
+  }
+  #slideExportStatus{
+    text-align:center;
+    color:#c9beb2;
+    font-size:0.8em;
+    margin-top:10px;
+    min-height:1.2em;
+  }
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -487,6 +536,7 @@
         <h2>The Collage</h2>
         <span class="count" id="galCount"></span>
       </div>
+      <button id="slideshowBtn" class="btn btn-primary btn-full" style="margin-bottom:14px;">▶️ Play Slideshow</button>
       <div id="galBody">
         <div class="loading">Loading photos…</div>
       </div>
@@ -537,6 +587,22 @@
   <div id="adminBody">
     <div class="loading">Loading photos…</div>
   </div>
+</div>
+
+<div id="slideshowModal">
+  <div class="slideTop">
+    <span id="slideStatus">Loading photos…</span>
+    <button class="qrClose" id="slideClose">×</button>
+  </div>
+  <canvas id="slideCanvas" width="720" height="1280"></canvas>
+  <audio id="slideAudio" loop></audio>
+  <div class="slideControls">
+    <button class="btn btn-secondary" id="slidePlayPauseBtn">⏸ Pause</button>
+    <button class="btn btn-secondary" id="slideMusicBtn">🎵 Add Music</button>
+    <input type="file" id="slideMusicInput" accept="audio/*" style="display:none;">
+  </div>
+  <button class="btn btn-primary btn-full" id="slideExportBtn" style="margin-top:10px;">⬇️ Export as Video</button>
+  <div id="slideExportStatus"></div>
 </div>
 
 <script>
@@ -596,6 +662,20 @@
   const adminPanel = document.getElementById('adminPanel');
   const adminExitBtn = document.getElementById('adminExitBtn');
   const adminBody = document.getElementById('adminBody');
+
+  const slideshowBtn = document.getElementById('slideshowBtn');
+  const slideshowModal = document.getElementById('slideshowModal');
+  const slideClose = document.getElementById('slideClose');
+  const slideCanvas = document.getElementById('slideCanvas');
+  const slideStatus = document.getElementById('slideStatus');
+  const slideAudio = document.getElementById('slideAudio');
+  const slidePlayPauseBtn = document.getElementById('slidePlayPauseBtn');
+  const slideMusicBtn = document.getElementById('slideMusicBtn');
+  const slideMusicInput = document.getElementById('slideMusicInput');
+  const slideExportBtn = document.getElementById('slideExportBtn');
+  const slideExportStatus = document.getElementById('slideExportStatus');
+
+  let loadedGalleryPhotos = [];
 
   const ADMIN_USER = 'josh';
   const ADMIN_PASS = 'joshiscool';
@@ -936,6 +1016,7 @@
       });
 
       photos.sort((a,b)=> (b.ts||0) - (a.ts||0));
+      loadedGalleryPhotos = photos;
       renderGallery(photos);
       galleryLoaded = true;
     }catch(err){
@@ -968,6 +1049,225 @@
   }
   lbClose.addEventListener('click', ()=> lightbox.classList.remove('open'));
   lightbox.addEventListener('click', (e)=>{ if(e.target === lightbox) lightbox.classList.remove('open'); });
+
+  // ---------- SLIDESHOW ----------
+  const SECONDS_PER_PHOTO = 4;
+  const CANVAS_W = slideCanvas.width;
+  const CANVAS_H = slideCanvas.height;
+  const sctx = slideCanvas.getContext('2d');
+
+  let slideImages = [];      // loaded Image() elements, same order as loadedGalleryPhotos
+  let slidePlaying = true;
+  let pausedOffset = 0;
+  let playStartTime = 0;
+  let rafId = null;
+  let musicObjectUrl = null;
+  let isRecording = false;
+  let mediaRecorder = null;
+  let recordedChunks = [];
+
+  function currentOffset(){
+    if(!slidePlaying) return pausedOffset;
+    const speed = CANVAS_W / (SECONDS_PER_PHOTO * 1000); // px per ms
+    return pausedOffset + (performance.now() - playStartTime) * speed;
+  }
+
+  // Draw one image "cover-fit" at a given x position on the canvas
+  function drawCover(img, x){
+    const imgRatio = img.width / img.height;
+    const canvasRatio = CANVAS_W / CANVAS_H;
+    let sw, sh, sx, sy;
+    if(imgRatio > canvasRatio){
+      sh = img.height;
+      sw = sh * canvasRatio;
+      sx = (img.width - sw) / 2;
+      sy = 0;
+    } else {
+      sw = img.width;
+      sh = sw / canvasRatio;
+      sx = 0;
+      sy = (img.height - sh) / 2;
+    }
+    sctx.drawImage(img, sx, sy, sw, sh, x, 0, CANVAS_W, CANVAS_H);
+  }
+
+  function drawFrame(offsetOverride){
+    if(slideImages.length === 0) return;
+    const totalWidth = slideImages.length * CANVAS_W;
+    let offset = (typeof offsetOverride === 'number') ? offsetOverride : currentOffset();
+    offset = ((offset % totalWidth) + totalWidth) % totalWidth;
+    const idx = Math.floor(offset / CANVAS_W);
+    const xPos = -(offset % CANVAS_W);
+    sctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+    drawCover(slideImages[idx], xPos);
+    const nextIdx = (idx + 1) % slideImages.length;
+    drawCover(slideImages[nextIdx], xPos + CANVAS_W);
+  }
+
+  function loopTick(){
+    drawFrame();
+    rafId = requestAnimationFrame(loopTick);
+  }
+
+  function preloadImages(photos){
+    return Promise.all(photos.map(p => new Promise((resolve)=>{
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = ()=> resolve(img);
+      img.onerror = ()=> resolve(null);
+      img.src = p.data;
+    }))).then(imgs => imgs.filter(Boolean));
+  }
+
+  slideshowBtn.addEventListener('click', async ()=>{
+    if(loadedGalleryPhotos.length < 1){
+      showToast('Add some photos first!');
+      return;
+    }
+    slideshowModal.classList.add('open');
+    slideStatus.textContent = 'Loading photos…';
+    slideImages = await preloadImages(loadedGalleryPhotos);
+    if(slideImages.length === 0){
+      slideStatus.textContent = 'Could not load photos.';
+      return;
+    }
+    slideStatus.textContent = slideImages.length + (slideImages.length===1 ? ' photo' : ' photos');
+    pausedOffset = 0;
+    playStartTime = performance.now();
+    slidePlaying = true;
+    slidePlayPauseBtn.textContent = '⏸ Pause';
+    if(rafId) cancelAnimationFrame(rafId);
+    loopTick();
+  });
+
+  slideClose.addEventListener('click', ()=>{
+    slideshowModal.classList.remove('open');
+    slidePlaying = false;
+    if(rafId) cancelAnimationFrame(rafId);
+    slideAudio.pause();
+    if(isRecording && mediaRecorder && mediaRecorder.state !== 'inactive'){
+      mediaRecorder.stop();
+    }
+  });
+
+  slidePlayPauseBtn.addEventListener('click', ()=>{
+    if(slidePlaying){
+      pausedOffset = currentOffset();
+      slidePlaying = false;
+      slidePlayPauseBtn.textContent = '▶️ Play';
+      slideAudio.pause();
+    } else {
+      playStartTime = performance.now();
+      slidePlaying = true;
+      slidePlayPauseBtn.textContent = '⏸ Pause';
+      if(slideAudio.src) slideAudio.play().catch(()=>{});
+    }
+  });
+
+  slideMusicBtn.addEventListener('click', ()=> slideMusicInput.click());
+  slideMusicInput.addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    if(musicObjectUrl) URL.revokeObjectURL(musicObjectUrl);
+    musicObjectUrl = URL.createObjectURL(file);
+    slideAudio.src = musicObjectUrl;
+    slideAudio.currentTime = 0;
+    if(slidePlaying) slideAudio.play().catch(()=>{});
+    slideMusicBtn.textContent = '🎵 ' + (file.name.length > 18 ? file.name.slice(0,15)+'…' : file.name);
+  });
+
+  // ---------- VIDEO EXPORT ----------
+  slideExportBtn.addEventListener('click', async ()=>{
+    if(isRecording) return;
+    if(slideImages.length === 0){
+      showToast('Add some photos first!');
+      return;
+    }
+    if(typeof MediaRecorder === 'undefined' || !slideCanvas.captureStream){
+      slideExportStatus.textContent = 'Video export isn\'t supported in this browser. Try Chrome on Android or desktop.';
+      return;
+    }
+
+    isRecording = true;
+    slideExportBtn.disabled = true;
+    slidePlayPauseBtn.disabled = true;
+    recordedChunks = [];
+
+    const fps = 30;
+    const canvasStream = slideCanvas.captureStream(fps);
+    let combinedStream = canvasStream;
+
+    let audioStream = null;
+    if(slideAudio.src && slideAudio.captureStream){
+      try{
+        audioStream = slideAudio.captureStream();
+        combinedStream = new MediaStream([
+          ...canvasStream.getVideoTracks(),
+          ...audioStream.getAudioTracks()
+        ]);
+        slideAudio.currentTime = 0;
+        await slideAudio.play().catch(()=>{});
+      }catch(e){ /* audio capture not supported here, continue video-only */ }
+    }
+
+    const mimeCandidates = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+      'video/mp4'
+    ];
+    const mimeType = mimeCandidates.find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
+
+    try{
+      mediaRecorder = mimeType ? new MediaRecorder(combinedStream, { mimeType }) : new MediaRecorder(combinedStream);
+    }catch(e){
+      slideExportStatus.textContent = 'Could not start recording on this browser.';
+      isRecording = false;
+      slideExportBtn.disabled = false;
+      slidePlayPauseBtn.disabled = false;
+      return;
+    }
+
+    mediaRecorder.ondataavailable = (e)=>{ if(e.data && e.data.size > 0) recordedChunks.push(e.data); };
+
+    const durationMs = slideImages.length * SECONDS_PER_PHOTO * 1000;
+    pausedOffset = 0;
+    playStartTime = performance.now();
+    slidePlaying = true;
+
+    mediaRecorder.onstop = ()=>{
+      isRecording = false;
+      slideExportBtn.disabled = false;
+      slidePlayPauseBtn.disabled = false;
+      const outType = (mediaRecorder.mimeType || 'video/webm').split(';')[0];
+      const blob = new Blob(recordedChunks, { type: outType });
+      const url = URL.createObjectURL(blob);
+      const ext = outType.includes('mp4') ? 'mp4' : 'webm';
+      slideExportStatus.innerHTML = '';
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'wedding-slideshow.' + ext;
+      link.className = 'btn btn-secondary btn-full';
+      link.style.display = 'block';
+      link.style.marginTop = '8px';
+      link.style.textAlign = 'center';
+      link.textContent = '💾 Save Video';
+      slideExportStatus.appendChild(link);
+    };
+
+    mediaRecorder.start();
+
+    const startedAt = performance.now();
+    const progressTimer = setInterval(()=>{
+      const pct = Math.min(100, Math.round(((performance.now()-startedAt)/durationMs)*100));
+      slideExportStatus.textContent = 'Recording… ' + pct + '%';
+    }, 300);
+
+    setTimeout(()=>{
+      clearInterval(progressTimer);
+      if(mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    }, durationMs + 150);
+  });
 
 })();
 </script>
