@@ -1373,15 +1373,34 @@
       }
       const url = URL.createObjectURL(blob);
       const ext = outType.includes('mp4') ? 'mp4' : 'webm';
+
       slideExportStatus.innerHTML = '';
+
+      const hint = document.createElement('p');
+      hint.textContent = 'Press and hold the video below, then choose "Save Video" to add it to your photos.';
+      hint.style.color = '#c9beb2';
+      hint.style.fontSize = '0.8em';
+      hint.style.margin = '4px 0 8px';
+
+      const videoEl = document.createElement('video');
+      videoEl.src = url;
+      videoEl.controls = true;
+      videoEl.playsInline = true;
+      videoEl.style.width = '100%';
+      videoEl.style.borderRadius = '10px';
+      videoEl.style.background = '#000';
+
       const link = document.createElement('a');
       link.href = url;
       link.download = 'wedding-slideshow.' + ext;
       link.className = 'btn btn-secondary btn-full';
       link.style.display = 'block';
-      link.style.marginTop = '8px';
+      link.style.marginTop = '10px';
       link.style.textAlign = 'center';
-      link.textContent = '💾 Save Video';
+      link.textContent = '💾 Or Download File';
+
+      slideExportStatus.appendChild(hint);
+      slideExportStatus.appendChild(videoEl);
       slideExportStatus.appendChild(link);
     };
 
