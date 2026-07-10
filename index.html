@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Wedding Photo Booth</title>
+<style>
+  :root{
+    --cream:#fbf7f2;
+    --gold:#b8935f;
+    --gold-dark:#8f7148;
+    --blush:#e8c9c3;
+    --ink:#3a332e;
+    --line:#e6ddd2;
+    --white:#ffffff;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:'Helvetica Neue', Arial, sans-serif;
+    background:var(--cream);
+    color:var(--ink);
+    min-height:100vh;
+  }
+  .app{
+    max-width:520px;
+    margin:0 auto;
+    min-height:100vh;
+    background:var(--white);
+    box-shadow:0 0 40px rgba(0,0,0,0.06);
+    display:flex;
+    flex-direction:column;
+  }
+  header{
+    text-align:center;
+    padding:28px 20px 18px;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#fffaf5,var(--white));
+  }
+  .names{
+    font-family:'Brush Script MT', cursive;
+    font-size:2.4em;
+    color:var(--gold-dark);
+    margin:0;
+    line-height:1;
+  }
+  .sub{
+    letter-spacing:2px;
+    font-size:0.72em;
+    text-transform:uppercase;
+    color:#9c9088;
+    margin-top:8px;
+  }
+  nav{
+    display:flex;
+    border-bottom:1px solid var(--line);
+  }
+  nav button{
+    flex:1;
+    padding:14px 8px;
+    background:none;
+    border:none;
+    font-size:0.95em;
+    color:#9c9088;
+    cursor:pointer;
+    border-bottom:2px solid transparent;
+    transition:all .2s;
+  }
+  nav button.active{
+    color:var(--gold-dark);
+    border-bottom-color:var(--gold);
+    font-weight:600;
+  }
+  main{
+    flex:1;
+    padding:20px;
+  }
+  .view{display:none;}
+  .view.active{display:block;}
+
+  /* Camera view */
+  #camWrap{
+    position:relative;
+    width:100%;
+    aspect-ratio:3/4;
+    background:#1a1714;
+    border-radius:16px;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  #video, #shotCanvas{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:none;
+  }
+  #camPlaceholder{
+    color:#cbb89e;
+    text-align:center;
+    padding:20px;
+    font-size:0.9em;
+  }
+  #camPlaceholder button{
+    margin-top:14px;
+  }
+  .flash{
+    position:absolute;
+    inset:0;
+    background:#fff;
+    opacity:0;
+    pointer-events:none;
+  }
+  .flash.go{
+    animation:flashPop .35s ease-out;
+  }
+  @keyframes flashPop{
+    0%{opacity:0.85;}
+    100%{opacity:0;}
+  }
+  .controls{
+    display:flex;
+    gap:10px;
+    margin-top:16px;
+  }
+  input[type=text]{
+    width:100%;
+    padding:12px 14px;
+    border:1px solid var(--line);
+    border-radius:10px;
+    font-size:1em;
+    margin-top:14px;
+    background:var(--cream);
+  }
+  button{
+    font-family:inherit;
+    cursor:pointer;
+  }
+  .btn{
+    padding:13px 18px;
+    border-radius:10px;
+    border:none;
+    font-size:0.95em;
+    font-weight:600;
+    flex:1;
+  }
+  .btn-primary{
+    background:var(--gold);
+    color:#fff;
+  }
+  .btn-primary:active{background:var(--gold-dark);}
+  .btn-secondary{
+    background:var(--cream);
+    color:var(--ink);
+    border:1px solid var(--line);
+  }
+  .btn-full{width:100%;}
+  .shutter{
+    width:74px;
+    height:74px;
+    border-radius:50%;
+    background:#fff;
+    border:4px solid var(--gold);
+    margin:18px auto 4px;
+    display:block;
+  }
+  .shutter:active{transform:scale(0.94);}
+  .hint{
+    text-align:center;
+    font-size:0.8em;
+    color:#a89c8f;
+    margin-top:6px;
+  }
+  #fileFallback{display:none;}
+
+  /* Gallery view */
+  .galleryHead{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    margin-bottom:14px;
+  }
+  .galleryHead h2{
+    font-size:1.05em;
+    margin:0;
+    color:var(--gold-dark);
+  }
+  .count{
+    font-size:0.8em;
+    color:#a89c8f;
+  }
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:6px;
+  }
+  .grid .cell{
+    aspect-ratio:1/1;
+    border-radius:8px;
+    overflow:hidden;
+    background:var(--cream);
+    position:relative;
+  }
+  .grid .cell img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+  }
+  .empty{
+    text-align:center;
+    padding:60px 20px;
+    color:#a89c8f;
+  }
+  .empty .big{font-size:2.4em; margin-bottom:8px;}
+  .loading{
+    text-align:center;
+    padding:40px;
+    color:#a89c8f;
+    font-size:0.9em;
+  }
+  /* Lightbox */
+  #lightbox{
+    position:fixed;
+    inset:0;
+    background:rgba(20,16,12,0.92);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    flex-direction:column;
+    z-index:50;
+    padding:20px;
+  }
+  #lightbox.open{display:flex;}
+  #lightbox img{
+    max-width:100%;
+    max-height:72vh;
+    border-radius:10px;
+  }
+  #lightbox .lbName{
+    color:#f2e9df;
+    margin-top:14px;
+    font-size:0.95em;
+  }
+  #lightbox .lbClose{
+    position:absolute;
+    top:20px;
+    right:20px;
+    background:none;
+    border:none;
+    color:#fff;
+    font-size:1.6em;
+    line-height:1;
+  }
+  .toast{
+    position:fixed;
+    bottom:24px;
+    left:50%;
+    transform:translateX(-50%) translateY(20px);
+    background:var(--gold-dark);
+    color:#fff;
+    padding:12px 22px;
+    border-radius:30px;
+    font-size:0.9em;
+    opacity:0;
+    transition:all .3s;
+    pointer-events:none;
+    z-index:60;
+    white-space:nowrap;
+  }
+  .toast.show{
+    opacity:1;
+    transform:translateX(-50%) translateY(0);
+  }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+<div class="app">
+  <header>
+    <p class="names">Sarah &amp; James</p>
+    <p class="sub">Share a moment from our day</p>
+  </header>
+
+  <nav>
+    <button id="tabCam" class="active">📷 Take Photo</button>
+    <button id="tabGal">🖼️ Gallery</button>
+  </nav>
+
+  <main>
+    <!-- CAMERA VIEW -->
+    <section id="viewCam" class="view active">
+      <div id="camWrap">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="shotCanvas"></canvas>
+        <div id="camPlaceholder">
+          Tap below to turn on your camera<br>
+          <button class="btn btn-primary" id="startCamBtn" style="margin-top:12px;">Enable Camera</button>
+        </div>
+        <div class="flash" id="flash"></div>
+      </div>
+
+      <button class="shutter" id="shutterBtn" style="display:none;"></button>
+      <p class="hint" id="camHint" style="display:none;">Tap the circle to capture</p>
+
+      <div id="fileFallback">
+        <input type="file" accept="image/*" capture="environment" id="fileInput" style="display:none;">
+        <button class="btn btn-secondary btn-full" id="fileFallbackBtn">Use device camera instead</button>
+      </div>
+
+      <div id="reviewControls" style="display:none;">
+        <input type="text" id="guestName" placeholder="Your name (optional)" maxlength="40">
+        <div class="controls">
+          <button class="btn btn-secondary" id="retakeBtn">Retake</button>
+          <button class="btn btn-primary" id="saveBtn">Add to Gallery</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- GALLERY VIEW -->
+    <section id="viewGal" class="view">
+      <div class="galleryHead">
+        <h2>The Collage</h2>
+        <span class="count" id="galCount"></span>
+      </div>
+      <div id="galBody">
+        <div class="loading">Loading photos…</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="lightbox">
+  <button class="lbClose" id="lbClose">×</button>
+  <img id="lbImg" src="">
+  <div class="lbName" id="lbName"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  // ---------- SUPABASE SETUP ----------
+  const SUPABASE_URL = 'https://cwofgyvdgnkaprymmawt.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN3b2ZneXZkZ25rYXByeW1tYXd0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2NDAwMzEsImV4cCI6MjA5OTIxNjAzMX0.gXrOLO3E9dTqOw4XeUWsELh8Cw2OTKk1kQLtAJaKARo';
+  const BUCKET = 'photos';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const tabCam = document.getElementById('tabCam');
+  const tabGal = document.getElementById('tabGal');
+  const viewCam = document.getElementById('viewCam');
+  const viewGal = document.getElementById('viewGal');
+
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('shotCanvas');
+  const camPlaceholder = document.getElementById('camPlaceholder');
+  const startCamBtn = document.getElementById('startCamBtn');
+  const shutterBtn = document.getElementById('shutterBtn');
+  const camHint = document.getElementById('camHint');
+  const flash = document.getElementById('flash');
+  const fileFallback = document.getElementById('fileFallback');
+  const fileFallbackBtn = document.getElementById('fileFallbackBtn');
+  const fileInput = document.getElementById('fileInput');
+  const reviewControls = document.getElementById('reviewControls');
+  const guestNameInput = document.getElementById('guestName');
+  const retakeBtn = document.getElementById('retakeBtn');
+  const saveBtn = document.getElementById('saveBtn');
+
+  const galBody = document.getElementById('galBody');
+  const galCount = document.getElementById('galCount');
+
+  const lightbox = document.getElementById('lightbox');
+  const lbImg = document.getElementById('lbImg');
+  const lbName = document.getElementById('lbName');
+  const lbClose = document.getElementById('lbClose');
+
+  const toastEl = document.getElementById('toast');
+
+  let stream = null;
+  let capturedDataUrl = null;
+  let galleryLoaded = false;
+
+  function showToast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    setTimeout(()=> toastEl.classList.remove('show'), 2200);
+  }
+
+  // ---------- TAB SWITCHING ----------
+  function switchTab(which){
+    if(which === 'cam'){
+      tabCam.classList.add('active');
+      tabGal.classList.remove('active');
+      viewCam.classList.add('active');
+      viewGal.classList.remove('active');
+    } else {
+      tabGal.classList.add('active');
+      tabCam.classList.remove('active');
+      viewGal.classList.add('active');
+      viewCam.classList.remove('active');
+      loadGallery();
+    }
+  }
+  tabCam.addEventListener('click', ()=> switchTab('cam'));
+  tabGal.addEventListener('click', ()=> switchTab('gal'));
+
+  // ---------- CAMERA ----------
+  async function startCamera(){
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user' },
+        audio: false
+      });
+      video.srcObject = stream;
+      video.style.display = 'block';
+      camPlaceholder.style.display = 'none';
+      shutterBtn.style.display = 'block';
+      camHint.style.display = 'block';
+      fileFallback.style.display = 'none';
+    }catch(err){
+      // Camera unavailable or denied — fall back to native file capture
+      camPlaceholder.innerHTML = 'Camera access unavailable.<br>Use your device camera below instead.';
+      fileFallback.style.display = 'block';
+    }
+  }
+
+  startCamBtn.addEventListener('click', startCamera);
+
+  fileFallbackBtn.addEventListener('click', ()=> fileInput.click());
+  fileInput.addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const resized = resizeImage(img);
+        showReview(resized);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  shutterBtn.addEventListener('click', ()=>{
+    if(!stream) return;
+    flash.classList.remove('go');
+    void flash.offsetWidth; // restart animation
+    flash.classList.add('go');
+
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, w, h);
+
+    const img = new Image();
+    img.onload = ()=>{
+      const resized = resizeImage(img);
+      showReview(resized);
+    };
+    img.src = canvas.toDataURL('image/jpeg', 0.92);
+  });
+
+  function resizeImage(img){
+    const maxDim = 900;
+    let w = img.width, h = img.height;
+    if(w > h && w > maxDim){ h = h * (maxDim/w); w = maxDim; }
+    else if(h > maxDim){ w = w * (maxDim/h); h = maxDim; }
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+    return c.toDataURL('image/jpeg', 0.62);
+  }
+
+  function showReview(dataUrl){
+    capturedDataUrl = dataUrl;
+    stopCamera();
+    video.style.display = 'none';
+    canvas.style.display = 'block';
+    canvas.getContext('2d'); // canvas already drawn if from camera
+    // draw resized preview onto visible canvas
+    const img = new Image();
+    img.onload = ()=>{
+      canvas.width = img.width;
+      canvas.height = img.height;
+      canvas.getContext('2d').drawImage(img,0,0);
+    };
+    img.src = dataUrl;
+
+    shutterBtn.style.display = 'none';
+    camHint.style.display = 'none';
+    fileFallback.style.display = 'none';
+    camPlaceholder.style.display = 'none';
+    reviewControls.style.display = 'block';
+  }
+
+  function stopCamera(){
+    if(stream){
+      stream.getTracks().forEach(t=>t.stop());
+      stream = null;
+    }
+  }
+
+  retakeBtn.addEventListener('click', ()=>{
+    capturedDataUrl = null;
+    canvas.style.display = 'none';
+    reviewControls.style.display = 'none';
+    camPlaceholder.style.display = 'flex';
+    camPlaceholder.innerHTML = 'Tap below to turn on your camera<br><button class="btn btn-primary" id="startCamBtn2" style="margin-top:12px;">Enable Camera</button>';
+    document.getElementById('startCamBtn2').addEventListener('click', startCamera);
+  });
+
+  saveBtn.addEventListener('click', async ()=>{
+    if(!capturedDataUrl) return;
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+    try{
+      const name = guestNameInput.value.trim() || 'Anonymous guest';
+      const safeName = encodeURIComponent(name).replace(/[^a-zA-Z0-9%_-]/g, '');
+      const fileName = Date.now() + '_' + safeName + '.jpg';
+
+      const blob = await (await fetch(capturedDataUrl)).blob();
+      const { error } = await sb.storage.from(BUCKET).upload(fileName, blob, {
+        contentType: 'image/jpeg',
+        upsert: false
+      });
+      if(error) throw error;
+      showToast('Added to the gallery! 💛');
+      guestNameInput.value = '';
+      capturedDataUrl = null;
+      canvas.style.display = 'none';
+      reviewControls.style.display = 'none';
+      camPlaceholder.style.display = 'flex';
+      camPlaceholder.innerHTML = 'Tap below to turn on your camera<br><button class="btn btn-primary" id="startCamBtn3" style="margin-top:12px;">Enable Camera</button>';
+      document.getElementById('startCamBtn3').addEventListener('click', startCamera);
+      galleryLoaded = false;
+    }catch(err){
+      showToast('Could not save — try again');
+    }
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Add to Gallery';
+  });
+
+  // ---------- GALLERY ----------
+  async function loadGallery(){
+    if(galleryLoaded) return;
+    galBody.innerHTML = '<div class="loading">Loading photos…</div>';
+    try{
+      const { data: files, error } = await sb.storage.from(BUCKET).list('', {
+        limit: 1000,
+        sortBy: { column: 'created_at', order: 'desc' }
+      });
+      if(error) throw error;
+      const validFiles = (files || []).filter(f => f.name && f.name.endsWith('.jpg'));
+
+      if(validFiles.length === 0){
+        galBody.innerHTML = '<div class="empty"><div class="big">📸</div>No photos yet.<br>Be the first to add one!</div>';
+        galCount.textContent = '';
+        galleryLoaded = true;
+        return;
+      }
+
+      const photos = validFiles.map(f => {
+        const { data: pub } = sb.storage.from(BUCKET).getPublicUrl(f.name);
+        // filename format: TIMESTAMP_ENCODEDNAME.jpg
+        const match = f.name.match(/^(\d+)_(.*)\.jpg$/);
+        let ts = 0, name = 'Anonymous guest';
+        if(match){
+          ts = parseInt(match[1], 10) || 0;
+          try{ name = decodeURIComponent(match[2]) || 'Anonymous guest'; }catch(e){}
+        }
+        return { data: pub.publicUrl, name: name, ts: ts };
+      });
+
+      photos.sort((a,b)=> (b.ts||0) - (a.ts||0));
+      renderGallery(photos);
+      galleryLoaded = true;
+    }catch(err){
+      galBody.innerHTML = '<div class="empty">Couldn\'t load the gallery. Pull to refresh and try again.</div>';
+    }
+  }
+
+  function renderGallery(photos){
+    galCount.textContent = photos.length + (photos.length===1 ? ' photo' : ' photos');
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    photos.forEach(p=>{
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      const img = document.createElement('img');
+      img.src = p.data;
+      img.loading = 'lazy';
+      cell.appendChild(img);
+      cell.addEventListener('click', ()=> openLightbox(p));
+      grid.appendChild(cell);
+    });
+    galBody.innerHTML = '';
+    galBody.appendChild(grid);
+  }
+
+  function openLightbox(p){
+    lbImg.src = p.data;
+    lbName.textContent = p.name || '';
+    lightbox.classList.add('open');
+  }
+  lbClose.addEventListener('click', ()=> lightbox.classList.remove('open'));
+  lightbox.addEventListener('click', (e)=>{ if(e.target === lightbox) lightbox.classList.remove('open'); });
+
+})();
+</script>
+</body>
+</html>
