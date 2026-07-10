@@ -273,6 +273,79 @@
     opacity:1;
     transform:translateX(-50%) translateY(0);
   }
+
+  /* QR button + modal */
+  .qrLink{
+    margin-top:14px;
+    background:none;
+    border:1px solid var(--gold);
+    color:var(--gold-dark);
+    padding:8px 16px;
+    border-radius:20px;
+    font-size:0.85em;
+  }
+  .qrLink:active{background:var(--cream);}
+
+  #qrModal{
+    position:fixed;
+    inset:0;
+    background:rgba(20,16,12,0.92);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:70;
+    padding:20px;
+  }
+  #qrModal.open{display:flex;}
+  .qrCard{
+    background:#fff;
+    border-radius:18px;
+    padding:32px 28px 26px;
+    text-align:center;
+    max-width:340px;
+    width:100%;
+    position:relative;
+  }
+  .qrCard h3{
+    font-family:'Brush Script MT', cursive;
+    font-size:1.8em;
+    color:var(--gold-dark);
+    margin:0 0 4px;
+  }
+  .qrCard p.qrSub{
+    font-size:0.8em;
+    color:#9c9088;
+    margin:0 0 18px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+  }
+  #qrImg{
+    width:100%;
+    max-width:260px;
+    border:8px solid var(--cream);
+    border-radius:12px;
+  }
+  .qrUrl{
+    margin-top:16px;
+    font-size:0.75em;
+    color:#a89c8f;
+    word-break:break-all;
+  }
+  .qrActions{
+    display:flex;
+    gap:8px;
+    margin-top:18px;
+  }
+  .qrClose{
+    position:absolute;
+    top:14px;
+    right:16px;
+    background:none;
+    border:none;
+    font-size:1.5em;
+    color:#c9beb2;
+    line-height:1;
+  }
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -282,6 +355,7 @@
   <header>
     <p class="names">Sarah &amp; James</p>
     <p class="sub">Share a moment from our day</p>
+    <button id="qrBtn" class="qrLink">📱 Show QR Code</button>
   </header>
 
   <nav>
@@ -340,6 +414,20 @@
 
 <div class="toast" id="toast"></div>
 
+<div id="qrModal">
+  <div class="qrCard">
+    <button class="qrClose" id="qrClose">×</button>
+    <h3>Sarah &amp; James</h3>
+    <p class="qrSub">Scan to add your photos</p>
+    <img id="qrImg" src="" alt="QR code">
+    <div class="qrUrl" id="qrUrl"></div>
+    <div class="qrActions">
+      <button class="btn btn-secondary" id="copyLinkBtn">Copy Link</button>
+      <button class="btn btn-primary" id="printQrBtn">Print</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   // ---------- SUPABASE SETUP ----------
@@ -377,6 +465,53 @@
   const lbClose = document.getElementById('lbClose');
 
   const toastEl = document.getElementById('toast');
+
+  const qrBtn = document.getElementById('qrBtn');
+  const qrModal = document.getElementById('qrModal');
+  const qrClose = document.getElementById('qrClose');
+  const qrImg = document.getElementById('qrImg');
+  const qrUrl = document.getElementById('qrUrl');
+  const copyLinkBtn = document.getElementById('copyLinkBtn');
+  const printQrBtn = document.getElementById('printQrBtn');
+
+  function currentPageUrl(){
+    // Strip any hash/query so the QR always points to the clean app URL
+    return window.location.origin + window.location.pathname;
+  }
+
+  qrBtn.addEventListener('click', ()=>{
+    const url = currentPageUrl();
+    const encoded = encodeURIComponent(url);
+    qrImg.src = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=' + encoded;
+    qrUrl.textContent = url;
+    qrModal.classList.add('open');
+  });
+  qrClose.addEventListener('click', ()=> qrModal.classList.remove('open'));
+  qrModal.addEventListener('click', (e)=>{ if(e.target === qrModal) qrModal.classList.remove('open'); });
+
+  copyLinkBtn.addEventListener('click', async ()=>{
+    try{
+      await navigator.clipboard.writeText(currentPageUrl());
+      showToast('Link copied!');
+    }catch(e){
+      showToast('Could not copy — copy manually');
+    }
+  });
+
+  printQrBtn.addEventListener('click', ()=>{
+    const w = window.open('', '_blank');
+    w.document.write(
+      '<html><head><title>Scan to add photos</title></head><body style="text-align:center;font-family:sans-serif;padding:40px;">' +
+      '<h1 style="font-family:Georgia,serif;">Sarah &amp; James</h1>' +
+      '<p style="text-transform:uppercase;letter-spacing:2px;color:#888;">Scan to add your photos</p>' +
+      '<img src="' + qrImg.src + '" style="width:320px;height:320px;margin-top:20px;">' +
+      '<p style="margin-top:20px;color:#aaa;font-size:0.8em;">' + currentPageUrl() + '</p>' +
+      '</body></html>'
+    );
+    w.document.close();
+    w.focus();
+    setTimeout(()=> w.print(), 400);
+  });
 
   let stream = null;
   let capturedDataUrl = null;
