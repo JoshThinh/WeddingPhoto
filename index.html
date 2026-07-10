@@ -101,6 +101,10 @@
     text-align:center;
     padding:20px;
     font-size:0.9em;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
   }
   #camPlaceholder button{
     margin-top:14px;
@@ -486,7 +490,7 @@
 <body>
 <div class="app">
   <header>
-    <p class="names">Jenny &amp; Tony</p>
+    <p class="names">Sarah &amp; James</p>
     <p class="sub">Share a moment from our day</p>
     <div style="display:flex; gap:8px; justify-content:center; margin-top:14px;">
       <button id="qrBtn" class="qrLink" style="margin-top:0;">📱 Show QR Code</button>
@@ -1172,7 +1176,16 @@
     musicObjectUrl = URL.createObjectURL(file);
     slideAudio.src = musicObjectUrl;
     slideAudio.currentTime = 0;
-    if(slidePlaying) slideAudio.play().catch(()=>{});
+    slideAudio.load();
+    slideAudio.play().then(()=>{
+      slidePlaying = true;
+      pausedOffset = currentOffset();
+      playStartTime = performance.now();
+      slidePlayPauseBtn.textContent = '⏸ Pause';
+      showToast('Music added 🎵');
+    }).catch(()=>{
+      showToast('Tap ▶️ Play to start the music');
+    });
     slideMusicBtn.textContent = '🎵 ' + (file.name.length > 18 ? file.name.slice(0,15)+'…' : file.name);
   });
 
@@ -1241,6 +1254,10 @@
       slidePlayPauseBtn.disabled = false;
       const outType = (mediaRecorder.mimeType || 'video/webm').split(';')[0];
       const blob = new Blob(recordedChunks, { type: outType });
+      if(blob.size < 2000){
+        slideExportStatus.textContent = 'Recording came out empty — this browser may be blocking canvas video capture. Try Chrome on Android or desktop.';
+        return;
+      }
       const url = URL.createObjectURL(blob);
       const ext = outType.includes('mp4') ? 'mp4' : 'webm';
       slideExportStatus.innerHTML = '';
@@ -1253,6 +1270,13 @@
       link.style.textAlign = 'center';
       link.textContent = '💾 Save Video';
       slideExportStatus.appendChild(link);
+    };
+
+    mediaRecorder.onerror = (e)=>{
+      isRecording = false;
+      slideExportBtn.disabled = false;
+      slidePlayPauseBtn.disabled = false;
+      slideExportStatus.textContent = 'Recording error: ' + (e.error ? e.error.message : 'unknown error');
     };
 
     mediaRecorder.start();
