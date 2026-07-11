@@ -501,6 +501,7 @@
     display:none;
     flex-direction:column;
     padding:16px;
+    overflow-y:auto;
   }
   #slideshowModal.open{display:flex;}
   .slideTop{
@@ -510,6 +511,7 @@
     color:#e8ddd0;
     font-size:0.85em;
     margin-bottom:10px;
+    flex:none;
   }
   .slideTop .qrClose{
     position:static;
@@ -518,9 +520,9 @@
   #slideCanvas{
     width:100%;
     max-width:420px;
+    max-height:52vh;
     margin:0 auto;
-    flex:1;
-    min-height:0;
+    flex:none;
     object-fit:contain;
     border-radius:12px;
     background:#000;
@@ -533,6 +535,7 @@
     width:100%;
     margin-left:auto;
     margin-right:auto;
+    flex:none;
   }
   #slideExportStatus{
     text-align:center;
@@ -540,6 +543,11 @@
     font-size:0.8em;
     margin-top:10px;
     min-height:1.2em;
+    max-width:420px;
+    width:100%;
+    margin-left:auto;
+    margin-right:auto;
+    padding-bottom:24px;
   }
 </style>
 
@@ -1413,10 +1421,12 @@
     }
 
     const mimeCandidates = [
+      'video/mp4;codecs=h264,aac',
+      'video/mp4;codecs=avc1',
+      'video/mp4',
       'video/webm;codecs=vp9,opus',
       'video/webm;codecs=vp8,opus',
-      'video/webm',
-      'video/mp4'
+      'video/webm'
     ];
     const mimeType = mimeCandidates.find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
 
@@ -1448,11 +1458,21 @@
         return;
       }
       const url = URL.createObjectURL(blob);
-      const ext = outType.includes('mp4') ? 'mp4' : 'webm';
+      const isMp4 = outType.includes('mp4');
+      const ext = isMp4 ? 'mp4' : 'webm';
       const fileName = 'wedding-slideshow.' + ext;
       const videoFile = new File([blob], fileName, { type: outType });
 
       slideExportStatus.innerHTML = '';
+
+      if(!isMp4){
+        const warn = document.createElement('p');
+        warn.textContent = 'Heads up: this browser could only record in WebM format, which some phones don\'t recognize as a savable video — the share menu may only offer "Save to device" instead of "Save to Photos." For best results, try exporting from Chrome.';
+        warn.style.color = '#e0b98f';
+        warn.style.fontSize = '0.78em';
+        warn.style.margin = '0 0 10px';
+        slideExportStatus.appendChild(warn);
+      }
 
       // PRIMARY (mobile-first): native share sheet, which offers "Save Video" /
       // "Save to Photos" directly on iOS and Android — the most reliable path on phones.
