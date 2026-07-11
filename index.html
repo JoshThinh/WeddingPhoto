@@ -188,6 +188,18 @@
     font-size:0.85em;
   }
   .flipBtn:active{background:var(--cream);}
+  .galleryPickBtn{
+    display:block;
+    width:100%;
+    margin-top:12px;
+    background:none;
+    border:1px dashed var(--gold);
+    color:var(--gold-dark);
+    padding:12px 16px;
+    border-radius:10px;
+    font-size:0.9em;
+  }
+  .galleryPickBtn:active{background:var(--cream);}
 
   /* Gallery view */
   .galleryHead{
@@ -571,6 +583,9 @@
         <button class="btn btn-secondary btn-full" id="fileFallbackBtn">Use device camera instead</button>
       </div>
 
+      <button class="galleryPickBtn" id="galleryPickBtn">🖼️ Choose from Your Photos</button>
+      <input type="file" accept="image/*" id="galleryFileInput" style="display:none;">
+
       <div id="reviewControls" style="display:none;">
         <input type="text" id="guestName" placeholder="Your name (optional)" maxlength="40">
         <div class="controls">
@@ -679,6 +694,8 @@
   const fileFallback = document.getElementById('fileFallback');
   const fileFallbackBtn = document.getElementById('fileFallbackBtn');
   const fileInput = document.getElementById('fileInput');
+  const galleryPickBtn = document.getElementById('galleryPickBtn');
+  const galleryFileInput = document.getElementById('galleryFileInput');
   const reviewControls = document.getElementById('reviewControls');
   const guestNameInput = document.getElementById('guestName');
   const retakeBtn = document.getElementById('retakeBtn');
@@ -916,8 +933,8 @@
   });
 
   fileFallbackBtn.addEventListener('click', ()=> fileInput.click());
-  fileInput.addEventListener('change', (e)=>{
-    const file = e.target.files[0];
+
+  function handlePickedFile(file){
     if(!file) return;
     const reader = new FileReader();
     reader.onload = (ev)=>{
@@ -929,6 +946,14 @@
       img.src = ev.target.result;
     };
     reader.readAsDataURL(file);
+  }
+
+  fileInput.addEventListener('change', (e)=> handlePickedFile(e.target.files[0]));
+
+  galleryPickBtn.addEventListener('click', ()=> galleryFileInput.click());
+  galleryFileInput.addEventListener('change', (e)=>{
+    handlePickedFile(e.target.files[0]);
+    galleryFileInput.value = ''; // allow picking the same photo again later
   });
 
   shutterBtn.addEventListener('click', ()=>{
@@ -984,6 +1009,7 @@
     camHint.style.display = 'none';
     fileFallback.style.display = 'none';
     camPlaceholder.style.display = 'none';
+    galleryPickBtn.style.display = 'none';
     reviewControls.style.display = 'block';
   }
 
@@ -998,6 +1024,7 @@
     capturedDataUrl = null;
     canvas.style.display = 'none';
     reviewControls.style.display = 'none';
+    galleryPickBtn.style.display = 'block';
     camPlaceholder.style.display = 'flex';
     camPlaceholder.innerHTML = 'Tap below to turn on your camera<br><button class="btn btn-primary" id="startCamBtn2" style="margin-top:12px;">Enable Camera</button>';
     document.getElementById('startCamBtn2').addEventListener('click', startCamera);
@@ -1023,6 +1050,7 @@
       capturedDataUrl = null;
       canvas.style.display = 'none';
       reviewControls.style.display = 'none';
+      galleryPickBtn.style.display = 'block';
       camPlaceholder.style.display = 'flex';
       camPlaceholder.innerHTML = 'Tap below to turn on your camera<br><button class="btn btn-primary" id="startCamBtn3" style="margin-top:12px;">Enable Camera</button>';
       document.getElementById('startCamBtn3').addEventListener('click', startCamera);
@@ -1421,14 +1449,31 @@
       }
       const url = URL.createObjectURL(blob);
       const ext = outType.includes('mp4') ? 'mp4' : 'webm';
+      const fileName = 'wedding-slideshow.' + ext;
+      const videoFile = new File([blob], fileName, { type: outType });
 
       slideExportStatus.innerHTML = '';
 
+      // PRIMARY (mobile-first): native share sheet, which offers "Save Video" /
+      // "Save to Photos" directly on iOS and Android — the most reliable path on phones.
+      const canNativeShare = !!(navigator.canShare && navigator.share && navigator.canShare({ files: [videoFile] }));
+      if(canNativeShare){
+        const shareBtn = document.createElement('button');
+        shareBtn.className = 'btn btn-primary btn-full';
+        shareBtn.textContent = '📲 Save Video to Phone';
+        shareBtn.addEventListener('click', ()=>{
+          navigator.share({ files: [videoFile], title: 'Wedding Slideshow' }).catch(()=>{});
+        });
+        slideExportStatus.appendChild(shareBtn);
+      }
+
       const hint = document.createElement('p');
-      hint.textContent = 'Press and hold the video below, then choose "Save Video" to add it to your photos.';
+      hint.textContent = canNativeShare
+        ? 'Tap the button above, then choose "Save Video" from the share menu. You can also long-press the video below.'
+        : 'Press and hold the video below, then choose "Save Video" to add it to your photos.';
       hint.style.color = '#c9beb2';
       hint.style.fontSize = '0.8em';
-      hint.style.margin = '4px 0 8px';
+      hint.style.margin = '8px 0 8px';
 
       const videoEl = document.createElement('video');
       videoEl.src = url;
@@ -1440,7 +1485,7 @@
 
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'wedding-slideshow.' + ext;
+      link.download = fileName;
       link.className = 'btn btn-secondary btn-full';
       link.style.display = 'block';
       link.style.marginTop = '10px';
